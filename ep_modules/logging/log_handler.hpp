@@ -4,15 +4,18 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <ctime>
 
 class BasicLogHandler{
     public:
         virtual void output(const std::string a_msg);
+        virtual std::string to_string();
 };
 
 class StreamLogHandler: public BasicLogHandler{
     public:
         virtual void output(const std::string a_msg);
+        virtual std::string to_string();
 };
 
 class FileStreamLogHandler: public StreamLogHandler{
@@ -21,6 +24,7 @@ class FileStreamLogHandler: public StreamLogHandler{
     public:
         FileStreamLogHandler(const std::string a_filename);
         virtual void output(const std::string a_msg);
+        virtual std::string to_string();
 };
 
 #endif

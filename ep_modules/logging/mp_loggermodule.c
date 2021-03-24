@@ -8,7 +8,8 @@
 // optimized to word-sized integers by the build system (interned strings).
 STATIC const mp_rom_map_elem_t ep_logging_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_ep_logging) },
-    { MP_ROM_QSTR(MP_QSTR_logger), (mp_obj_t)&logger_type},
+    { MP_ROM_QSTR(MP_QSTR_Logger), (mp_obj_t)&logger_type},
+    { MP_ROM_QSTR(MP_QSTR_FileStreamHandler), (mp_obj_t)&fileStreamHandler_type},
 };
 
 STATIC MP_DEFINE_CONST_DICT(ep_logging_module_globals, ep_logging_module_globals_table);

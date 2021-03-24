@@ -11,7 +11,7 @@ STATIC void logger_print(const mp_print_t *print, mp_obj_t self_in, mp_print_kin
 }
 
 STATIC mp_obj_t logger_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
-    mp_arg_check_num(n_args, n_kw, 0, 1, true);
+    mp_arg_check_num(n_args, n_kw, 0, 3, true);
 
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_hostname, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_OBJ_NULL} },
@@ -44,64 +44,76 @@ STATIC mp_obj_t logger_make_new(const mp_obj_type_t *type, size_t n_args, size_t
     return MP_OBJ_FROM_PTR(self);
 }
 
-mp_obj_t logger_debug(mp_obj_t self_in, mp_obj_t message) {
+mp_obj_t mp_logger_addHandler(mp_obj_t self_in, mp_obj_t handler_in) {
+    logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    logger_class_obj_t *handler = MP_OBJ_TO_PTR(handler_in);
+    
+    logger_addHandler(self->obj, handler->obj);
+
+    return mp_const_none;
+}
+
+mp_obj_t mp_logger_debug(mp_obj_t self_in, mp_obj_t message) {
     logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
     logger_log(self->obj, mp_obj_str_get_str(message), 7); 
     return mp_const_none;
 }
 
-mp_obj_t logger_info(mp_obj_t self_in, mp_obj_t message) {
+mp_obj_t mp_logger_info(mp_obj_t self_in, mp_obj_t message) {
     logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
     logger_log(self->obj, mp_obj_str_get_str(message), 6); 
     return mp_const_none;
 }
 
-mp_obj_t logger_notice(mp_obj_t self_in, mp_obj_t message) {
+mp_obj_t mp_logger_notice(mp_obj_t self_in, mp_obj_t message) {
     logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
     logger_log(self->obj, mp_obj_str_get_str(message), 5); 
     return mp_const_none;
 }
 
-mp_obj_t logger_warning(mp_obj_t self_in, mp_obj_t message) {
+mp_obj_t mp_logger_warning(mp_obj_t self_in, mp_obj_t message) {
     logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
     logger_log(self->obj, mp_obj_str_get_str(message), 4); 
     return mp_const_none;
 }
 
-mp_obj_t logger_error(mp_obj_t self_in, mp_obj_t message) {
+mp_obj_t mp_logger_error(mp_obj_t self_in, mp_obj_t message) {
     logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
     logger_log(self->obj, mp_obj_str_get_str(message), 3); 
     return mp_const_none;
 }
 
-mp_obj_t logger_critical(mp_obj_t self_in, mp_obj_t message) {
+mp_obj_t mp_logger_critical(mp_obj_t self_in, mp_obj_t message) {
     logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
     logger_log(self->obj, mp_obj_str_get_str(message), 2); 
     return mp_const_none;
 }
 
-mp_obj_t logger_alarm(mp_obj_t self_in, mp_obj_t message) {
+mp_obj_t mp_logger_alarm(mp_obj_t self_in, mp_obj_t message) {
     logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
     logger_log(self->obj, mp_obj_str_get_str(message), 1); 
     return mp_const_none;
 }
 
-mp_obj_t logger_emergency(mp_obj_t self_in, mp_obj_t message) {
+mp_obj_t mp_logger_emergency(mp_obj_t self_in, mp_obj_t message) {
     logger_class_obj_t *self = MP_OBJ_TO_PTR(self_in);
     logger_log(self->obj, mp_obj_str_get_str(message), 0); 
     return mp_const_none;
 }
 
-MP_DEFINE_CONST_FUN_OBJ_2(logger_debug_obj, logger_debug);
-MP_DEFINE_CONST_FUN_OBJ_2(logger_info_obj, logger_info);
-MP_DEFINE_CONST_FUN_OBJ_2(logger_notice_obj, logger_notice);
-MP_DEFINE_CONST_FUN_OBJ_2(logger_warning_obj, logger_warning);
-MP_DEFINE_CONST_FUN_OBJ_2(logger_error_obj, logger_error);
-MP_DEFINE_CONST_FUN_OBJ_2(logger_critical_obj, logger_critical);
-MP_DEFINE_CONST_FUN_OBJ_2(logger_alarm_obj, logger_alarm);
-MP_DEFINE_CONST_FUN_OBJ_2(logger_emergency_obj, logger_emergency);
+MP_DEFINE_CONST_FUN_OBJ_2(logger_add_handler_obj, mp_logger_addHandler);
+
+MP_DEFINE_CONST_FUN_OBJ_2(logger_debug_obj, mp_logger_debug);
+MP_DEFINE_CONST_FUN_OBJ_2(logger_info_obj, mp_logger_info);
+MP_DEFINE_CONST_FUN_OBJ_2(logger_notice_obj, mp_logger_notice);
+MP_DEFINE_CONST_FUN_OBJ_2(logger_warning_obj, mp_logger_warning);
+MP_DEFINE_CONST_FUN_OBJ_2(logger_error_obj, mp_logger_error);
+MP_DEFINE_CONST_FUN_OBJ_2(logger_critical_obj, mp_logger_critical);
+MP_DEFINE_CONST_FUN_OBJ_2(logger_alarm_obj, mp_logger_alarm);
+MP_DEFINE_CONST_FUN_OBJ_2(logger_emergency_obj, mp_logger_emergency);
 
 STATIC const mp_rom_map_elem_t logger_locals_dict_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_addHandler), MP_ROM_PTR(&logger_add_handler_obj) },
     { MP_ROM_QSTR(MP_QSTR_ldebug), MP_ROM_PTR(&logger_debug_obj) },
     { MP_ROM_QSTR(MP_QSTR_linfo), MP_ROM_PTR(&logger_info_obj) },
     { MP_ROM_QSTR(MP_QSTR_lnotice), MP_ROM_PTR(&logger_notice_obj) },
