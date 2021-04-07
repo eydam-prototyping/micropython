@@ -25,7 +25,7 @@ std::string LogFormatter::format(const LogMessage* a_msg){
     std::strftime(buffer, 32, "%Y-%m-%dT%H:%M:%SZ", std::localtime(&(a_msg->timestamp)));
     switch (messageFormat)
     {
-    case protocol23format:
+    case protocol23Format:
         result += "<" + std::to_string(a_msg->facility * 8 + a_msg->severity) + ">";
         if (colored){result += "\033[34m";}
         result += " " + (std::string)buffer;

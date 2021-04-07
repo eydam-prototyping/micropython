@@ -9,7 +9,7 @@
 #define msg_highlight_endc "\033[0m"
 
 
-enum MessageFormat { protocol23format };
+enum MessageFormat { protocol23Format, combinedLogFormat };
 
 class LogFormatter{
     private:

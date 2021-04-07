@@ -13,6 +13,7 @@ SRC_USERMOD_CXX += $(EP_MODULE_DIR)/log_message.cpp
 # Add our module directory to the include path.
 CFLAGS_USERMOD += -I$(EP_MODULE_DIR)
 CXXFLAGS_USERMOD += -I$(EP_MODULE_DIR) 
+CXXFLAGS_USERMOD += -I$(BOARD_DIR) -Wno-error=cpp -Wno-error=sign-compare
 
 # We use C++ features so have to link against the standard library.
 LDFLAGS_USERMOD += -lstdc++ 
