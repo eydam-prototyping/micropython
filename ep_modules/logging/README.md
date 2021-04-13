@@ -38,7 +38,7 @@ Third option is `LogToStream`. Here you can specify a socket:
 >>> s = socket.socket()
 >>> addr_info = socket.getaddrinfo("192.168.178.100", 514)
 >>> s.connect(addr_info[0][-1])
->>> h = logging.LogHandler(dest=logging.LogToStream, stream=s)
+>>> h = logging.LogHandler(dest=logging.LogToStream, log_stream=s)
 >>> l = logging.Logger()
 >>> l.addHandler(h)
 ```
