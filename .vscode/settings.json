@@ -1,0 +1,93 @@
+{
+    "actionButtons": {
+        "defaultColor": "#FFFFFF",
+        "commands": [
+            {
+                "name": "Activate venv",
+                "command": "source $HOME/micropython/venv/bin/activate"
+            },
+            {
+                "name": "make clean (Unix)",
+                "command": "cd $HOME/micropython/ports/unix; make clean"
+            },
+            {
+                "name": "make with ep_modules (Unix)",
+                "command": "cd $HOME/micropython/ports/unix; make USER_C_MODULES=$HOME/micropython/ep_modules CFLAGS_EXTRA=-DMODULE_EPMODULES_ENABLED=1 all"
+            },
+            {
+                "name": "make with ep_modules (ESP32)",
+                "command": "cd $HOME/micropython/ports/esp32; make PYTHON2=$HOME/micropython/venv/bin/python3 USER_C_MODULES=$HOME/micropython/ep_modules CFLAGS_EXTRA=-DMODULE_EPMODULES_ENABLED=1 all"
+            }
+        ]
+    },
+    "files.associations": {
+        "array": "cpp",
+        "atomic": "cpp",
+        "bit": "cpp",
+        "*.tcc": "cpp",
+        "cctype": "cpp",
+        "clocale": "cpp",
+        "cmath": "cpp",
+        "complex": "cpp",
+        "cstdarg": "cpp",
+        "cstddef": "cpp",
+        "cstdint": "cpp",
+        "cstdio": "cpp",
+        "cstdlib": "cpp",
+        "ctime": "cpp",
+        "cwchar": "cpp",
+        "cwctype": "cpp",
+        "deque": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp",
+        "exception": "cpp",
+        "algorithm": "cpp",
+        "functional": "cpp",
+        "iterator": "cpp",
+        "memory": "cpp",
+        "memory_resource": "cpp",
+        "numeric": "cpp",
+        "optional": "cpp",
+        "random": "cpp",
+        "string": "cpp",
+        "string_view": "cpp",
+        "system_error": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp",
+        "fstream": "cpp",
+        "initializer_list": "cpp",
+        "iosfwd": "cpp",
+        "istream": "cpp",
+        "limits": "cpp",
+        "new": "cpp",
+        "ostream": "cpp",
+        "sstream": "cpp",
+        "stdexcept": "cpp",
+        "streambuf": "cpp",
+        "cinttypes": "cpp",
+        "typeinfo": "cpp",
+        "thread": "cpp",
+        "chrono": "cpp",
+        "ratio": "cpp",
+        "iostream": "cpp",
+        "logger.h": "c",
+        "loggermodule.h": "c",
+        "logger2.h": "c",
+        "list": "cpp",
+        "map": "cpp",
+        "*.inc": "cpp",
+        "mp_loggermodule.h": "c",
+        "runtime.h": "c",
+        "log_c_functions.h": "c",
+        "machine_i2c.h": "c",
+        "mpthread.h": "c",
+        "stdio.h": "c",
+        "mp_class_logger.h": "c",
+        "mp_class_handler.h": "c",
+        "mp_class_formatter.h": "c",
+        "modmachine.h": "c",
+        "c_class_message.h": "c",
+        "c_funcs_logger.h": "c"
+    }
+}
