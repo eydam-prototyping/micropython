@@ -313,8 +313,9 @@ void stm32_main(uint32_t reset_mode) {
     // Enable 8-byte stack alignment for IRQ handlers, in accord with EABI
     SCB->CCR |= SCB_CCR_STKALIGN_Msk;
 
-    // Check if bootloader should be entered instead of main application
-    powerctrl_check_enter_bootloader();
+    // Hook for a board to run code at start up, for example check if a
+    // bootloader should be entered instead of the main application.
+    MICROPY_BOARD_STARTUP();
 
     // Enable caches and prefetch buffers
 
@@ -468,9 +469,7 @@ void stm32_main(uint32_t reset_mode) {
 
     boardctrl_state_t state;
     state.reset_mode = reset_mode;
-    state.run_boot_py = false;
-    state.run_main_py = false;
-    state.last_ret = 0;
+    state.log_soft_reset = false;
 
     MICROPY_BOARD_BEFORE_SOFT_RESET_LOOP(&state);
 
@@ -531,7 +530,7 @@ soft_reset:
     // Create it if needed, mount in on /flash, and set it as current dir.
     bool mounted_flash = false;
     #if MICROPY_HW_FLASH_MOUNT_AT_BOOT
-    mounted_flash = init_flash_fs(reset_mode);
+    mounted_flash = init_flash_fs(state.reset_mode);
     #endif
 
     bool mounted_sdcard = false;
@@ -565,19 +564,10 @@ soft_reset:
     // reset config variables; they should be set by boot.py
     MP_STATE_PORT(pyb_config_main) = MP_OBJ_NULL;
 
-    MICROPY_BOARD_BEFORE_BOOT_PY(&state);
-
-    // run boot.py, if it exists
-    // TODO perhaps have pyb.reboot([bootpy]) function to soft-reboot and execute custom boot.py
-    if (state.run_boot_py) {
-        const char *boot_py = "boot.py";
-        state.last_ret = pyexec_file_if_exists(boot_py);
-        if (state.last_ret & PYEXEC_FORCED_EXIT) {
-            goto soft_reset_exit;
-        }
+    // Run boot.py (or whatever else a board configures at this stage).
+    if (MICROPY_BOARD_RUN_BOOT_PY(&state) == BOARDCTRL_GOTO_SOFT_RESET_EXIT) {
+        goto soft_reset_exit;
     }
-
-    MICROPY_BOARD_AFTER_BOOT_PY(&state);
 
     // Now we initialise sub-systems that need configuration from boot.py,
     // or whose initialisation can be safely deferred until after running
@@ -612,23 +602,10 @@ soft_reset:
 
     // At this point everything is fully configured and initialised.
 
-    MICROPY_BOARD_BEFORE_MAIN_PY(&state);
-
-    // Run the main script from the current directory.
-    if (state.run_main_py) {
-        const char *main_py;
-        if (MP_STATE_PORT(pyb_config_main) == MP_OBJ_NULL) {
-            main_py = "main.py";
-        } else {
-            main_py = mp_obj_str_get_str(MP_STATE_PORT(pyb_config_main));
-        }
-        state.last_ret = pyexec_file_if_exists(main_py);
-        if (state.last_ret & PYEXEC_FORCED_EXIT) {
-            goto soft_reset_exit;
-        }
+    // Run main.py (or whatever else a board configures at this stage).
+    if (MICROPY_BOARD_RUN_MAIN_PY(&state) == BOARDCTRL_GOTO_SOFT_RESET_EXIT) {
+        goto soft_reset_exit;
     }
-
-    MICROPY_BOARD_AFTER_MAIN_PY(&state);
 
     #if MICROPY_ENABLE_COMPILER
     // Main script is finished, so now go into REPL mode.
