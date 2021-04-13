@@ -1,0 +1,43 @@
+LogFormatter(format='protocol23format', colored=False)
+LogFormatter(format='standard', colored=False)
+LogFormatter(format='standard', colored=True)
+LogHandler(dest=LogToConsole)
+LogHandler(dest=LogToFile, filename='log.txt')
+log.txt
+RAISE VALUE ERROR OK
+LogHandler(dest=LogToStream)
+LogFormatter(format='protocol23format', colored=False)
+LogFormatter(format='standard', colored=True)
+Logger(hostname='linux', appname='micropython')
+TestApp
+Logger(hostname='linux', appname='TestApp')
+TestHost
+Logger(hostname='TestHost', appname='TestApp')
+<135> \.\+ TestHost TestApp 0 0 test debug
+[\.\+] DEBUG      TestHost TestApp 0 0 test debug
+<134> \.\+ TestHost TestApp 0 1 test info
+[\.\+] INFO       TestHost TestApp 0 1 test info
+<133> \.\+ TestHost TestApp 0 2 test notice
+[\.\+] NOTICE     TestHost TestApp 0 2 test notice
+<132> \.\+ TestHost TestApp 0 3 test warning
+[\.\+] WARNING    TestHost TestApp 0 3 test warning
+<131> \.\+ TestHost TestApp 0 4 test error
+[\.\+] ERROR      TestHost TestApp 0 4 test error
+<130> \.\+ TestHost TestApp 0 5 test critical
+[\.\+] CRITICAL   TestHost TestApp 0 5 test critical
+<129> \.\+ TestHost TestApp 0 6 test alarm
+[\.\+] ALARM      TestHost TestApp 0 6 test alarm
+<128> \.\+ TestHost TestApp 0 7 test emergency
+[\.\+] EMERGENCY  TestHost TestApp 0 7 test emergency
+<135> \.\+ TestHost TestApp 0 8 test debug
+<134> \.\+ TestHost TestApp 0 9 test info
+<133> \.\+ TestHost TestApp 0 10 test notice
+<132> \.\+ TestHost TestApp 0 11 test warning
+<131> \.\+ TestHost TestApp 0 12 test error
+[\.\+] ERROR      TestHost TestApp 0 12 test error
+<130> \.\+ TestHost TestApp 0 13 test critical
+[\.\+] CRITICAL   TestHost TestApp 0 13 test critical
+<129> \.\+ TestHost TestApp 0 14 test alarm
+[\.\+] ALARM      TestHost TestApp 0 14 test alarm
+<128> \.\+ TestHost TestApp 0 15 test emergency
+[\.\+] EMERGENCY  TestHost TestApp 0 15 test emergency

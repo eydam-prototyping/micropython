@@ -68,7 +68,7 @@ def run_micropython(pyb, args, test_file, is_special=False):
     special_tests = (
         'micropython/meminfo.py', 'basics/bytes_compare3.py',
         'basics/builtin_help.py', 'thread/thread_exc2.py',
-        'esp32/partition_ota.py',
+        'esp32/partition_ota.py', 'ep_modules/test_logging.py',
     )
     had_crash = False
     if pyb is None:
@@ -647,7 +647,7 @@ the last matching regex is used:
 
     if len(args.files) == 0:
         if args.test_dirs is None:
-            test_dirs = ('basics', 'micropython', 'misc', 'extmod',)
+            test_dirs = ('basics', 'micropython', 'misc', 'extmod','ep_modules')
             if args.target == 'pyboard':
                 # run pyboard tests
                 test_dirs += ('float', 'stress', 'pyb', 'pybnative', 'inlineasm')
