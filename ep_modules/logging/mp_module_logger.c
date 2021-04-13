@@ -29,4 +29,4 @@ const mp_obj_module_t logging_cmodule = {
     .globals = (mp_obj_dict_t *)&logging_module_globals,
 };
 
-MP_REGISTER_MODULE(MP_QSTR_logging, logging_cmodule, MODULE_EPMODULES_ENABLED);
+MP_REGISTER_MODULE(MP_QSTR_logging, logging_cmodule, 1);

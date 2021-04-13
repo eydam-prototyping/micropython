@@ -1,4 +1,4 @@
-EP_MODULE_DIR := ../../ep_modules/logging
+EP_MODULE_DIR := /home/tobias/micropython/ep_modules/logging
 
 #MICROPY_VFS = 1
 #MICROPY_VFS_FAT = 1
