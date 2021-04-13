@@ -1,4 +1,4 @@
-EP_MODULE_DIR := ../../ep_modules/logging2
+EP_MODULE_DIR := ../../ep_modules/logging
 
 #MICROPY_VFS = 1
 #MICROPY_VFS_FAT = 1
