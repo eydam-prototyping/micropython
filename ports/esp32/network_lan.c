@@ -26,17 +26,24 @@
  * THE SOFTWARE.
  */
 
-#if !MICROPY_ESP_IDF_4
+
 #include "py/runtime.h"
 #include "py/mphal.h"
 
-#include "eth_phy/phy.h"
-#include "eth_phy/phy_tlk110.h"
-#include "eth_phy/phy_lan8720.h"
-#include "eth_phy/phy_ip101.h"
-#include "tcpip_adapter.h"
+//#include "eth_phy/phy.h"
+//#include "eth_phy/phy_tlk110.h"
+//#include "eth_phy/phy_lan8720.h"
+//#include "eth_phy/phy_ip101.h"
+//#include "tcpip_adapter.h"
+
+#include "esp_interface.h"
+#include "esp_eth_mac.h"
+#include "esp_eth_phy.h"
 
 #include "modnetwork.h"
+
+typedef esp_err_t(*eth_phy_power_enable_func)(esp_eth_phy_t*, bool);
+typedef esp_err_t(*eth_phy_check_link_func)(esp_eth_phy_t*);
 
 typedef struct _lan_if_obj_t {
     mp_obj_base_t base;
@@ -48,9 +55,14 @@ typedef struct _lan_if_obj_t {
     int8_t phy_power_pin;
     uint8_t phy_addr;
     uint8_t phy_type;
+    esp_eth_mac_t* mac;
+    eth_phy_config_t phy_config;
+    esp_eth_phy_t phy;
     eth_phy_check_link_func link_func;
     eth_phy_power_enable_func power_func;
 } lan_if_obj_t;
+
+//typedef esp_eth_phy_t *(*eth_config_t)(const eth_phy_config_t);
 
 const mp_obj_type_t lan_if_type;
 STATIC lan_if_obj_t lan_obj = {{&lan_if_type}, ESP_IF_ETH, false, false};
@@ -59,10 +71,13 @@ STATIC void phy_power_enable(bool enable) {
     lan_if_obj_t *self = &lan_obj;
 
     if (self->phy_power_pin != -1) {
+        self->phy_config = ETH_PHY_DEFAULT_CONFIG();
+        self->phy_config.phy_addr = self->phy_addr;
+        self->phy_config.reset_gpio_num = self->phy_power_pin;
 
         if (!enable) {
             // Do the PHY-specific power_enable(false) function before powering down
-            self->power_func(false);
+            self->power_func(&self->phy_config, false);
         }
 
         gpio_pad_select_gpio(self->phy_power_pin);
@@ -78,15 +93,21 @@ STATIC void phy_power_enable(bool enable) {
 
         if (enable) {
             // Run the PHY-specific power on operations now the PHY has power
-            self->power_func(true);
+            self->power_func(&self->phy_config, true);
         }
     }
 }
 
 STATIC void init_lan_rmii() {
     lan_if_obj_t *self = &lan_obj;
-    phy_rmii_configure_data_interface_pins();
-    phy_rmii_smi_configure_pins(self->mdc_pin, self->mdio_pin);
+
+    eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
+    mac_config.smi_mdc_gpio_num = self->mdc_pin;
+    mac_config.smi_mdio_gpio_num = self->mdio_pin;
+    self->mac = esp_eth_mac_new_esp32(&mac_config);
+
+    //phy_rmii_configure_data_interface_pins();
+    //phy_rmii_smi_configure_pins(self->mdc_pin, self->mdio_pin);
 }
 
 STATIC mp_obj_t get_lan(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
@@ -131,43 +152,48 @@ STATIC mp_obj_t get_lan(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_ar
     }
 
     if (args[ARG_clock_mode].u_int != -1 &&
-        args[ARG_clock_mode].u_int != ETH_CLOCK_GPIO0_IN &&
+        args[ARG_clock_mode].u_int != 0 &&
         // Disabled due ESP-IDF (see modnetwork.c note)
         // args[ARG_clock_mode].u_int != ETH_CLOCK_GPIO0_OUT &&
-        args[ARG_clock_mode].u_int != ETH_CLOCK_GPIO16_OUT &&
-        args[ARG_clock_mode].u_int != ETH_CLOCK_GPIO17_OUT) {
+        args[ARG_clock_mode].u_int != 2 &&
+        args[ARG_clock_mode].u_int != 3) {
         mp_raise_ValueError(MP_ERROR_TEXT("invalid clock mode"));
     }
 
-    eth_config_t config;
+    esp_eth_phy_t* config;
 
     switch (args[ARG_phy_type].u_int) {
         case PHY_TLK110:
-            config = phy_tlk110_default_ethernet_config;
+            //config = phy_tlk110_default_ethernet_config;
+            config = esp_eth_phy_new_tlk110(&self->phy_config);
             break;
         case PHY_LAN8720:
-            config = phy_lan8720_default_ethernet_config;
+            //config = phy_lan8720_default_ethernet_config;
+            config = esp_eth_phy_new_lan8720(&self->phy_config);
             break;
         case PHY_IP101:
-            config = phy_ip101_default_ethernet_config;
+            //config = phy_ip101_default_ethernet_config;
+            config = esp_eth_phy_new_ip101(&self->phy_config);
             break;
     }
-
-    self->link_func = config.phy_check_link;
+    
+    self->link_func = config->get_link;
+    self->power_func = config->pwrctl;
 
     // Replace default power func with our own
-    self->power_func = config.phy_power_enable;
-    config.phy_power_enable = phy_power_enable;
+    //self->power_func = config.phy_power_enable;
+    //config.phy_power_enable = phy_power_enable;
 
-    config.phy_addr = args[ARG_phy_addr].u_int;
-    config.gpio_config = init_lan_rmii;
-    config.tcpip_input = tcpip_adapter_eth_input;
+    //config.phy_addr = args[ARG_phy_addr].u_int;
+    //config.gpio_config = init_lan_rmii;
+    //config.tcpip_input = tcpip_adapter_eth_input;
 
-    if (args[ARG_clock_mode].u_int != -1) {
-        config.clock_mode = args[ARG_clock_mode].u_int;
-    }
+    //if (args[ARG_clock_mode].u_int != -1) {
+        //config.clock_mode = args[ARG_clock_mode].u_int;
+    //}
 
-    if (esp_eth_init(&config) == ESP_OK) {
+    //if (esp_eth_init(&config) == ESP_OK) {
+    if (config->init(&self->phy_config) == ESP_OK) {
         self->active = false;
         self->initialized = true;
     } else {
@@ -224,4 +250,3 @@ const mp_obj_type_t lan_if_type = {
     .locals_dict = (mp_obj_dict_t *)&lan_if_locals_dict,
 };
 
-#endif // !MICROPY_ESP_IDF_4
