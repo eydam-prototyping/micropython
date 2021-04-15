@@ -15,7 +15,7 @@ mp_obj_t handler_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw,
         { MP_QSTR_formatter, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_OBJ_NULL} },
         { MP_QSTR_dest, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = LOG_TO_CONSOLE} },
         { MP_QSTR_filename, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_OBJ_NULL} },
-        { MP_QSTR_stream, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_OBJ_NULL} },
+        { MP_QSTR_log_stream, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_OBJ_NULL} },
     };
 
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
@@ -123,7 +123,7 @@ STATIC void handler_attr(mp_obj_t self_in, qstr attribute, mp_obj_t *destination
         destination[0] = mp_obj_new_int(self->level);
     }
 
-    if(attribute == MP_QSTR_stream) {
+    if(attribute == MP_QSTR_log_stream) {
         if (self->dest == LOG_TO_STREAM){ 
             destination[0] = self->stream;
         }else{

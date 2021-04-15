@@ -43,6 +43,7 @@
 #include "lib/netutils/netutils.h"
 #include "esp_eth.h"
 #include "esp_wifi.h"
+#include "esp_wps.h"
 #include "esp_log.h"
 #include "lwip/dns.h"
 #include "mdns.h"
@@ -59,6 +60,25 @@
 #else
 #define DNS_MAIN ESP_NETIF_DNS_MAIN
 #endif
+
+
+enum {
+    STAT_IDLE = 0,
+    STAT_CONNECTING,
+    STAT_GOT_IP,
+    STATION_WRONG_PASSWORD,
+    STATION_NO_AP_FOUND,
+    STATION_CONNECT_FAIL,
+    STATION_GOT_IP
+};
+
+enum wps_cb_status {
+    WPS_CB_ST_SUCCESS = 0,
+    WPS_CB_ST_FAILED,
+    WPS_CB_ST_TIMEOUT,
+    WPS_CB_ST_WEP,
+    WPS_CB_ST_PROBING  // not in user_interface.h
+};
 
 #define MODNETWORK_INCLUDE_CONSTANTS (1)
 
@@ -102,6 +122,14 @@ NORETURN void _esp_exceptions(esp_err_t e) {
             mp_raise_msg(&mp_type_OSError, MP_ERROR_TEXT("TCP/IP DHCP Client Start Failed"));
         case ESP_ERR_TCPIP_ADAPTER_NO_MEM:
             mp_raise_OSError(MP_ENOMEM);
+        case ESP_ERR_WIFI_REGISTRAR:
+            mp_raise_msg(&mp_type_OSError, "WPS Registrar not supported");
+        case ESP_ERR_WIFI_WPS_TYPE:
+            mp_raise_msg(&mp_type_OSError, "WPS Type Error");
+        //case ESP_ERR_WIFI_WPS_MODE:
+        //    mp_raise_msg(&mp_type_OSError, "Wifi not in Station Mode or Sniffer Mode on");
+        case ESP_ERR_WIFI_WPS_SM:
+            mp_raise_msg(&mp_type_OSError, "WPS State Machine not initialized"); 
         default:
             mp_raise_msg_varg(&mp_type_RuntimeError, MP_ERROR_TEXT("Wifi Unknown Error 0x%04x"), e);
     }
@@ -137,6 +165,9 @@ static bool wifi_sta_connected = false;
 // Store the current status. 0 means None here, safe to do so as first enum value is WIFI_REASON_UNSPECIFIED=1.
 static uint8_t wifi_sta_disconn_reason = 0;
 
+
+static uint8_t wifi_sta_status = 0;
+
 #if MICROPY_HW_ENABLE_MDNS_QUERIES || MICROPY_HW_ENABLE_MDNS_RESPONDER
 // Whether mDNS has been initialised or not
 static bool mdns_initialised = false;
@@ -156,6 +187,7 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
             ESP_LOGI("network", "GOT_IP");
             wifi_sta_connected = true;
             wifi_sta_disconn_reason = 0; // Success so clear error. (in case of new error will be replaced anyway)
+            wifi_sta_status = STATION_GOT_IP;
             #if MICROPY_HW_ENABLE_MDNS_QUERIES || MICROPY_HW_ENABLE_MDNS_RESPONDER
             if (!mdns_initialised) {
                 mdns_init();
@@ -181,14 +213,17 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
                 case WIFI_REASON_BEACON_TIMEOUT:
                     // AP has dropped out; try to reconnect.
                     message = "\nbeacon timeout";
+                    wifi_sta_status = STATION_CONNECT_FAIL;
                     break;
                 case WIFI_REASON_NO_AP_FOUND:
                     // AP may not exist, or it may have momentarily dropped out; try to reconnect.
                     message = "\nno AP found";
+                    wifi_sta_status = STATION_NO_AP_FOUND;
                     break;
                 case WIFI_REASON_AUTH_FAIL:
                     // Password may be wrong, or it just failed to connect; try to reconnect.
                     message = "\nauthentication failed";
+                    wifi_sta_status = STATION_WRONG_PASSWORD;
                     break;
                 default:
                     // Let other errors through and try to reconnect.
@@ -228,6 +263,39 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
             break;
         case SYSTEM_EVENT_ETH_GOT_IP:
             ESP_LOGI("ethernet", "Got IP");
+            break;
+        case SYSTEM_EVENT_STA_WPS_ER_SUCCESS:
+            wifi_sta_status = WPS_CB_ST_SUCCESS;
+            ESP_LOGI("wifi", "STA_WPS_ER_SUCCESS");
+            if (esp_wifi_wps_disable() != ESP_OK) {
+                mp_printf(MP_PYTHON_PRINTER, "disable WPS failed\n");
+            }
+            break;
+        case SYSTEM_EVENT_STA_WPS_ER_FAILED:
+            wifi_sta_status = WPS_CB_ST_FAILED;
+            ESP_LOGI("wifi", "STA_WPS_ER_FAILED");
+            if (esp_wifi_wps_disable() != ESP_OK) {
+                mp_printf(MP_PYTHON_PRINTER, "disable WPS failed\n");
+            }
+            break;
+        case SYSTEM_EVENT_STA_WPS_ER_TIMEOUT:
+            wifi_sta_status = WPS_CB_ST_TIMEOUT;
+            ESP_LOGI("wifi", "STA_WPS_ER_TIMEOUT");
+            if (esp_wifi_wps_disable() != ESP_OK) {
+                mp_printf(MP_PYTHON_PRINTER, "disable WPS failed\n");
+            }
+            break;
+        case SYSTEM_EVENT_STA_WPS_ER_PIN:
+        {
+            char wps_pin[8];
+            for(int i = 0; i<8; i++){
+                wps_pin[i] = i + '0';
+            }
+            mp_printf(MP_PYTHON_PRINTER, "WPS_PIN = ");
+            mp_printf(MP_PYTHON_PRINTER, wps_pin);
+            mp_printf(MP_PYTHON_PRINTER, "\n");
+            //ESP_LOGI("wifi", "WPS_PIN = %s"PINSTR, PIN2STR(event->event_info.sta_er_pin.pin_code));
+        }
             break;
         default:
             ESP_LOGI("network", "event %d", event->event_id);
@@ -324,6 +392,22 @@ STATIC mp_obj_t esp_active(size_t n_args, const mp_obj_t *args) {
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(esp_active_obj, 1, 2, esp_active);
 
+STATIC mp_obj_t esp_start_wps(size_t n_args, const mp_obj_t *args){
+    int mode = WPS_TYPE_PBC;
+    if (n_args>1){
+        mode = mp_obj_get_int(args[1]);
+        printf("%d", mode);
+    }
+
+    esp_wps_config_t config = WPS_CONFIG_INIT_DEFAULT(mode);
+    ESP_EXCEPTIONS(esp_wifi_wps_enable(&config));
+    ESP_EXCEPTIONS(esp_wifi_wps_start(0));
+
+    return mp_const_none;
+}
+
+STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(esp_start_wps_obj, 1, 2, esp_start_wps);
+
 STATIC mp_obj_t esp_connect(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     enum { ARG_ssid, ARG_password, ARG_bssid };
     static const mp_arg_t allowed_args[] = {
@@ -379,20 +463,13 @@ STATIC mp_obj_t esp_disconnect(mp_obj_t self_in) {
 
 STATIC MP_DEFINE_CONST_FUN_OBJ_1(esp_disconnect_obj, esp_disconnect);
 
-// Cases similar to ESP8266 user_interface.h
-// Error cases are referenced from wifi_err_reason_t in ESP-IDF
-enum {
-    STAT_IDLE       = 1000,
-    STAT_CONNECTING = 1001,
-    STAT_GOT_IP     = 1010,
-};
-
 STATIC mp_obj_t esp_status(size_t n_args, const mp_obj_t *args) {
     wlan_if_obj_t *self = MP_OBJ_TO_PTR(args[0]);
     if (n_args == 1) {
         if (self->if_id == WIFI_IF_STA) {
+            return MP_OBJ_NEW_SMALL_INT(wifi_sta_status);
             // Case of no arg is only for the STA interface
-            if (wifi_sta_connected) {
+            /*if (wifi_sta_connected) {
                 // Happy path, connected with IP
                 return MP_OBJ_NEW_SMALL_INT(STAT_GOT_IP);
             } else if (wifi_sta_connect_requested) {
@@ -404,7 +481,7 @@ STATIC mp_obj_t esp_status(size_t n_args, const mp_obj_t *args) {
             } else {
                 // Simply pass the error through from ESP-identifier
                 return MP_OBJ_NEW_SMALL_INT(wifi_sta_disconn_reason);
-            }
+            }*/
         }
         return mp_const_none;
     }
@@ -711,6 +788,13 @@ STATIC mp_obj_t esp_config(size_t n_args, const mp_obj_t *args, mp_map_t *kwargs
             val = MP_OBJ_NEW_SMALL_INT(cfg.ap.max_connection);
             break;
         }
+        case QS(MP_QSTR_password):
+            if (self->if_id == WIFI_IF_STA) {
+              val = mp_obj_new_str((char*)cfg.sta.password, strlen((char*)cfg.sta.password));
+            } else {
+              val = mp_obj_new_str((char*)cfg.ap.password, strlen((char*)cfg.ap.password));
+            }
+            break;
         default:
             goto unknown;
     }
@@ -732,6 +816,7 @@ MP_DEFINE_CONST_FUN_OBJ_KW(esp_config_obj, 1, esp_config);
 STATIC const mp_rom_map_elem_t wlan_if_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_active), MP_ROM_PTR(&esp_active_obj) },
     { MP_ROM_QSTR(MP_QSTR_connect), MP_ROM_PTR(&esp_connect_obj) },
+    { MP_ROM_QSTR(MP_QSTR_start_wps), MP_ROM_PTR(&esp_start_wps_obj) },
     { MP_ROM_QSTR(MP_QSTR_disconnect), MP_ROM_PTR(&esp_disconnect_obj) },
     { MP_ROM_QSTR(MP_QSTR_status), MP_ROM_PTR(&esp_status_obj) },
     { MP_ROM_QSTR(MP_QSTR_scan), MP_ROM_PTR(&esp_scan_obj) },
@@ -783,6 +868,15 @@ STATIC const mp_rom_map_elem_t mp_module_network_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_AUTH_WPA2_WPA3_PSK), MP_ROM_INT(WIFI_AUTH_WPA2_WPA3_PSK) },
     #endif
     { MP_ROM_QSTR(MP_QSTR_AUTH_MAX), MP_ROM_INT(WIFI_AUTH_MAX) },
+
+    { MP_ROM_QSTR(MP_QSTR_WPS_SUCCESS), MP_ROM_INT(WPS_CB_ST_SUCCESS) },
+    { MP_ROM_QSTR(MP_QSTR_WPS_FAILED), MP_ROM_INT(WPS_CB_ST_FAILED) },
+    { MP_ROM_QSTR(MP_QSTR_WPS_TIMEOUT), MP_ROM_INT(WPS_CB_ST_TIMEOUT) },
+    { MP_ROM_QSTR(MP_QSTR_WPS_WEP), MP_ROM_INT(WPS_CB_ST_WEP) },
+    { MP_ROM_QSTR(MP_QSTR_WPS_PROBING), MP_ROM_INT(WPS_CB_ST_PROBING) },
+
+    { MP_ROM_QSTR(MP_QSTR_WPS_TYPE_PBC), MP_ROM_INT(WPS_TYPE_PBC) },
+    { MP_ROM_QSTR(MP_QSTR_WPS_TYPE_PIN), MP_ROM_INT(WPS_TYPE_PIN) },
 
     { MP_ROM_QSTR(MP_QSTR_PHY_LAN8720), MP_ROM_INT(PHY_LAN8720) },
     { MP_ROM_QSTR(MP_QSTR_PHY_TLK110), MP_ROM_INT(PHY_TLK110) },
