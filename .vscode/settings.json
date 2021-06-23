@@ -1,6 +1,6 @@
 {
     "actionButtons": {
-        "defaultColor": "#FFFFFF",
+        "defaultColor": "#FFFFFF", 
         "commands": [
             {
                 "name": "Activate venv",
