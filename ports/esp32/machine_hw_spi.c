@@ -184,8 +184,12 @@ STATIC void machine_hw_spi_init_internal(
         changed = true;
     }
 
-    if (self->host != HSPI_HOST && self->host != VSPI_HOST) {
-        mp_raise_ValueError(MP_ERROR_TEXT("SPI ID must be either HSPI(1) or VSPI(2)"));
+    if (self->host != HSPI_HOST
+        #ifdef VSPI_HOST
+        && self->host != VSPI_HOST
+        #endif
+        ) {
+        mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("SPI(%d) doesn't exist"), self->host);
     }
 
     if (changed) {
@@ -220,8 +224,10 @@ STATIC void machine_hw_spi_init_internal(
     int dma_chan = 0;
     if (self->host == HSPI_HOST) {
         dma_chan = 1;
+    #ifdef VSPI_HOST
     } else if (self->host == VSPI_HOST) {
         dma_chan = 2;
+    #endif
     }
 
     ret = spi_bus_initialize(self->host, &buscfg, dma_chan);
@@ -405,6 +411,32 @@ mp_obj_t machine_hw_spi_make_new(const mp_obj_type_t *type, size_t n_args, size_
     }
     self->base.type = &machine_hw_spi_type;
 
+    int8_t sck, mosi, miso;
+
+    if (args[ARG_sck].u_obj == MP_OBJ_NULL) {
+        sck = default_pins->sck;
+    } else if (args[ARG_sck].u_obj == mp_const_none) {
+        sck = -1;
+    } else {
+        sck = machine_pin_get_id(args[ARG_sck].u_obj);
+    }
+
+    if (args[ARG_mosi].u_obj == MP_OBJ_NULL) {
+        mosi = default_pins->mosi;
+    } else if (args[ARG_mosi].u_obj == mp_const_none) {
+        mosi = -1;
+    } else {
+        mosi = machine_pin_get_id(args[ARG_mosi].u_obj);
+    }
+
+    if (args[ARG_miso].u_obj == MP_OBJ_NULL) {
+        miso = default_pins->miso;
+    } else if (args[ARG_miso].u_obj == mp_const_none) {
+        miso = -1;
+    } else {
+        miso = machine_pin_get_id(args[ARG_miso].u_obj);
+    }
+
     machine_hw_spi_init_internal(
         self,
         args[ARG_id].u_int,
@@ -413,9 +445,9 @@ mp_obj_t machine_hw_spi_make_new(const mp_obj_type_t *type, size_t n_args, size_
         args[ARG_phase].u_int,
         args[ARG_bits].u_int,
         args[ARG_firstbit].u_int,
-        args[ARG_sck].u_obj == MP_OBJ_NULL ? default_pins->sck : machine_pin_get_id(args[ARG_sck].u_obj),
-        args[ARG_mosi].u_obj == MP_OBJ_NULL ? default_pins->mosi : machine_pin_get_id(args[ARG_mosi].u_obj),
-        args[ARG_miso].u_obj == MP_OBJ_NULL ? default_pins->miso : machine_pin_get_id(args[ARG_miso].u_obj));
+        sck,
+        mosi,
+        miso);
 
     return MP_OBJ_FROM_PTR(self);
 }
