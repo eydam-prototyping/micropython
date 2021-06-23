@@ -451,7 +451,13 @@ MP_NOINLINE int main_(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
     #endif
 
-    mp_stack_set_limit(40000 * (sizeof(void *) / 4));
+    // Define a reasonable stack limit to detect stack overflow.
+    mp_uint_t stack_limit = 40000 * (sizeof(void *) / 4);
+    #if defined(__arm__) && !defined(__thumb2__)
+    // ARM (non-Thumb) architectures require more stack.
+    stack_limit *= 2;
+    #endif
+    mp_stack_set_limit(stack_limit);
 
     pre_process_options(argc, argv);
 
@@ -596,7 +602,12 @@ MP_NOINLINE int main_(int argc, char **argv) {
 
                 mp_obj_t mod;
                 nlr_buf_t nlr;
-                bool subpkg_tried = false;
+
+                // Allocating subpkg_tried on the stack can lead to compiler warnings about this
+                // variable being clobbered when nlr is implemented using setjmp/longjmp.  Its
+                // value must be preserved across calls to setjmp/longjmp.
+                static bool subpkg_tried;
+                subpkg_tried = false;
 
             reimport:
                 if (nlr_push(&nlr) == 0) {
