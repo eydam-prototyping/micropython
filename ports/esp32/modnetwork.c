@@ -8,6 +8,7 @@
  *
  * Copyright (c) 2016, 2017 Nick Moore @mnemote
  * Copyright (c) 2017 "Eric Poulsen" <eric@zyxod.com>
+ * Copyright (c) 2021 "Tobias Eydam" <tobiaseydam@hotmail.com>
  *
  * Based on esp8266/modnetwork.c which is Copyright (c) 2015 Paul Sokolovsky
  * And the ESP IDF example code which is Public Domain / CC0
@@ -44,6 +45,7 @@
 #include "esp_eth.h"
 #include "esp_wifi.h"
 #include "esp_log.h"
+#include "esp_wps.h"
 #include "lwip/dns.h"
 #include "mdns.h"
 
@@ -136,6 +138,11 @@ static bool wifi_sta_connected = false;
 
 // Store the current status. 0 means None here, safe to do so as first enum value is WIFI_REASON_UNSPECIFIED=1.
 static uint8_t wifi_sta_disconn_reason = 0;
+
+// set to "true" if esp_wifi_wps_start() was called
+static bool wifi_wps_probing = false;
+
+static uint8_t wifi_wps_pin[8] = {0,0,0,0,0,0,0,0};
 
 #if MICROPY_HW_ENABLE_MDNS_QUERIES || MICROPY_HW_ENABLE_MDNS_RESPONDER
 // Whether mDNS has been initialised or not
@@ -241,6 +248,32 @@ static esp_err_t event_handler(void *ctx, system_event_t *event) {
         case SYSTEM_EVENT_ETH_GOT_IP:
             ESP_LOGI("ethernet", "Got IP");
             break;
+        case SYSTEM_EVENT_STA_WPS_ER_SUCCESS:
+            ESP_LOGI("wps", "SYSTEM_EVENT_STA_WPS_ER_SUCCESS");
+            ESP_ERROR_CHECK(esp_wifi_wps_disable());
+            wifi_wps_probing = false;
+            wifi_sta_reconnects = 0;
+            // connect to the WiFi AP
+            MP_THREAD_GIL_EXIT();
+            ESP_EXCEPTIONS(esp_wifi_connect());
+            MP_THREAD_GIL_ENTER();
+            wifi_sta_connect_requested = true;
+            break;
+        case SYSTEM_EVENT_STA_WPS_ER_FAILED:
+            ESP_LOGI("wps", "WIFI_EVENT_STA_WPS_ER_FAILED");
+            ESP_ERROR_CHECK(esp_wifi_wps_disable());
+            wifi_wps_probing = false;
+            break;
+        case SYSTEM_EVENT_STA_WPS_ER_TIMEOUT:
+            ESP_LOGI("wps", "SYSTEM_EVENT_STA_WPS_ER_TIMEOUT");
+            ESP_ERROR_CHECK(esp_wifi_wps_disable());
+            wifi_wps_probing = false;
+            break;
+        case SYSTEM_EVENT_STA_WPS_ER_PIN:
+            ESP_LOGI("wps", "WIFI_EVENT_STA_WPS_ER_PIN");
+            wifi_event_sta_wps_er_pin_t *evt = (wifi_event_sta_wps_er_pin_t *)&event->event_info;
+            memcpy(wifi_wps_pin, evt->pin_code, 8);
+            break;
         default:
             ESP_LOGI("network", "event %d", event->event_id);
             break;
@@ -337,21 +370,21 @@ STATIC mp_obj_t esp_active(size_t n_args, const mp_obj_t *args) {
 STATIC MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(esp_active_obj, 1, 2, esp_active);
 
 STATIC mp_obj_t esp_connect(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
-    enum { ARG_ssid, ARG_password, ARG_bssid };
+    enum { ARG_ssid, ARG_password, ARG_bssid, ARG_wps, ARG_wps_mode };
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_, MP_ARG_OBJ, {.u_obj = mp_const_none} },
         { MP_QSTR_, MP_ARG_OBJ, {.u_obj = mp_const_none} },
         { MP_QSTR_bssid, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_obj = mp_const_none} },
+        { MP_QSTR_wps, MP_ARG_KW_ONLY | MP_ARG_BOOL, {.u_bool = false } },
+        { MP_QSTR_wps_mode, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = WPS_TYPE_PBC } },
     };
-
     // parse args
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
 
-    wifi_config_t wifi_sta_config = {0};
-
     // configure any parameters that are given
     if (n_args > 1) {
+        wifi_config_t wifi_sta_config = {0};
         size_t len;
         const char *p;
         if (args[ARG_ssid].u_obj != mp_const_none) {
@@ -371,6 +404,12 @@ STATIC mp_obj_t esp_connect(size_t n_args, const mp_obj_t *pos_args, mp_map_t *k
             memcpy(wifi_sta_config.sta.bssid, p, sizeof(wifi_sta_config.sta.bssid));
         }
         ESP_EXCEPTIONS(esp_wifi_set_config(ESP_IF_WIFI_STA, &wifi_sta_config));
+    } else if (args[ARG_wps].u_bool == true) {
+        esp_wps_config_t wps_config = WPS_CONFIG_INIT_DEFAULT((int)args[ARG_wps_mode].u_int);
+        esp_wifi_wps_enable(&wps_config);
+        esp_wifi_wps_start(0);
+        wifi_wps_probing = true;
+        return mp_const_none;
     }
 
     wifi_sta_reconnects = 0;
@@ -395,9 +434,10 @@ STATIC MP_DEFINE_CONST_FUN_OBJ_1(esp_disconnect_obj, esp_disconnect);
 // Cases similar to ESP8266 user_interface.h
 // Error cases are referenced from wifi_err_reason_t in ESP-IDF
 enum {
-    STAT_IDLE       = 1000,
-    STAT_CONNECTING = 1001,
-    STAT_GOT_IP     = 1010,
+    STAT_IDLE        = 1000,
+    STAT_CONNECTING  = 1001,
+    STAT_WPS_PROBING = 1002,
+    STAT_GOT_IP      = 1010,
 };
 
 STATIC mp_obj_t esp_status(size_t n_args, const mp_obj_t *args) {
@@ -413,6 +453,9 @@ STATIC mp_obj_t esp_status(size_t n_args, const mp_obj_t *args) {
                            || wifi_sta_reconnects < conf_wifi_sta_reconnects)) {
                 // No connection or error, but is requested = Still connecting
                 return MP_OBJ_NEW_SMALL_INT(STAT_CONNECTING);
+            } else if (wifi_wps_probing == true) {
+                // waiting for wps
+                return MP_OBJ_NEW_SMALL_INT(STAT_WPS_PROBING);
             } else if (wifi_sta_disconn_reason == 0) {
                 // No activity, No error = Idle
                 return MP_OBJ_NEW_SMALL_INT(STAT_IDLE);
@@ -705,6 +748,18 @@ STATIC mp_obj_t esp_config(size_t n_args, const mp_obj_t *args, mp_map_t *kwargs
                     req_if = WIFI_IF_AP;
             }
             break;
+        case QS(MP_QSTR_password):
+            switch (self->if_id) {
+                case WIFI_IF_STA:
+                    val = mp_obj_new_str((char *)cfg.sta.password, strlen((char *)cfg.sta.password));
+                    break;
+                case WIFI_IF_AP:
+                    val = mp_obj_new_str((char *)cfg.ap.password, strlen((char *)cfg.ap.password));
+                    break;
+                default:
+                    req_if = WIFI_IF_AP;
+            }
+            break;
         case QS(MP_QSTR_hidden):
             req_if = WIFI_IF_AP;
             val = mp_obj_new_bool(cfg.ap.ssid_hidden);
@@ -731,6 +786,9 @@ STATIC mp_obj_t esp_config(size_t n_args, const mp_obj_t *args, mp_map_t *kwargs
             req_if = WIFI_IF_STA;
             int rec = conf_wifi_sta_reconnects - 1;
             val = MP_OBJ_NEW_SMALL_INT(rec);
+            break;
+        case QS(MP_QSTR_wps_pin):
+            val = mp_obj_new_str((char *)wifi_wps_pin, 8);
             break;
         default:
             goto unknown;
@@ -799,6 +857,10 @@ STATIC const mp_rom_map_elem_t mp_module_network_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_AUTH_WPA2_PSK), MP_ROM_INT(WIFI_AUTH_WPA2_PSK) },
     { MP_ROM_QSTR(MP_QSTR_AUTH_WPA_WPA2_PSK), MP_ROM_INT(WIFI_AUTH_WPA_WPA2_PSK) },
     { MP_ROM_QSTR(MP_QSTR_AUTH_WPA2_ENTERPRISE), MP_ROM_INT(WIFI_AUTH_WPA2_ENTERPRISE) },
+
+    { MP_ROM_QSTR(MP_QSTR_WPS_TYPE_PBC), MP_ROM_INT(WPS_TYPE_PBC) },
+    { MP_ROM_QSTR(MP_QSTR_WPS_TYPE_PIN), MP_ROM_INT(WPS_TYPE_PIN) },
+
     #if 0 // TODO: Remove this #if/#endif when lastest ISP IDF will be used
     { MP_ROM_QSTR(MP_QSTR_AUTH_WPA3_PSK), MP_ROM_INT(WIFI_AUTH_WPA3_PSK) },
     { MP_ROM_QSTR(MP_QSTR_AUTH_WPA2_WPA3_PSK), MP_ROM_INT(WIFI_AUTH_WPA2_WPA3_PSK) },
@@ -826,6 +888,7 @@ STATIC const mp_rom_map_elem_t mp_module_network_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_STAT_IDLE), MP_ROM_INT(STAT_IDLE)},
     { MP_ROM_QSTR(MP_QSTR_STAT_CONNECTING), MP_ROM_INT(STAT_CONNECTING)},
     { MP_ROM_QSTR(MP_QSTR_STAT_GOT_IP), MP_ROM_INT(STAT_GOT_IP)},
+    { MP_ROM_QSTR(MP_QSTR_STAT_WPS_PROBING), MP_ROM_INT(STAT_WPS_PROBING)},
     // Errors from the ESP-IDF
     { MP_ROM_QSTR(MP_QSTR_STAT_NO_AP_FOUND), MP_ROM_INT(WIFI_REASON_NO_AP_FOUND)},
     { MP_ROM_QSTR(MP_QSTR_STAT_WRONG_PASSWORD), MP_ROM_INT(WIFI_REASON_AUTH_FAIL)},
